@@ -24,13 +24,17 @@ export const Message: React.FC<MessageProps> = ({ message, botName }) => {
   };
 
   const getMessageLabel = () => {
+    const modelInfo = message.modelName ? ` (${message.modelName})` : '';
+
     switch (message.role) {
       case 'user':
         return 'You';
       case 'moderator':
-        return message.type === 'moderator-thinking' ? '💭 Moderator' : '🎯 Moderator';
+        return message.type === 'moderator-thinking'
+          ? `💭 Moderator${modelInfo}`
+          : `🎯 Moderator${modelInfo}`;
       case 'bot':
-        return `🤖 ${botName || 'Bot'}`;
+        return `🤖 ${botName || 'Bot'}${modelInfo}`;
       case 'system':
         return '⚙️ System';
       default:

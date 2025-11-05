@@ -44,6 +44,7 @@ export interface Message {
 
   // Metadata
   botId?: string;              // ID of bot that sent/received this message
+  modelName?: string;          // Model used to generate this message
   parentMessageId?: string;    // For threading conversations
   toolsUsed?: ToolUsage[];     // Tools used to generate this message
   metadata?: Record<string, any>;
@@ -63,7 +64,9 @@ export type ConversationStatus =
   | 'researching'          // Bots working on gathering information
   | 'synthesizing'         // Moderator compiling final report
   | 'completed'            // Report delivered
-  | 'paused';              // Waiting for user input
+  | 'paused'               // Waiting for user input
+  | 'debating'             // Ongoing debate between models
+  | 'stopped';             // User stopped the debate
 
 export interface Conversation {
   id: string;
@@ -79,6 +82,11 @@ export interface Conversation {
   pendingQuestions: string[];  // Questions moderator still wants to ask user
   researchTasks: ResearchTask[];
   currentPhase: string;        // Human-readable phase description
+
+  // Debate mode tracking
+  debateMode?: boolean;        // Whether this is a debate conversation
+  debateRound?: number;        // Current round of debate
+  participatingBots?: string[]; // Bots participating in the debate
 }
 
 export interface ResearchTask {

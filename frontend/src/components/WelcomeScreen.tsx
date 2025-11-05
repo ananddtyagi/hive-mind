@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import type { BotConfig } from '@shared/types';
 
 interface WelcomeScreenProps {
-  onStart: (question: string) => void;
+  onStart: (question: string, selectedBots?: string[]) => void;
+  availableBots: BotConfig[];
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, availableBots }) => {
   const [question, setQuestion] = useState('');
+  const [selectedBots, setSelectedBots] = useState<string[]>([]);
 
   const exampleQuestions = [
     "Should I use WebRTC or WebSocket for real-time video chat?",
@@ -18,13 +21,33 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (question.trim()) {
-      onStart(question.trim());
+      onStart(question.trim(), selectedBots.length > 0 ? selectedBots : undefined);
     }
   };
 
   const handleExampleClick = (example: string) => {
     setQuestion(example);
   };
+
+  const handleBotToggle = (botId: string) => {
+    setSelectedBots(prev =>
+      prev.includes(botId)
+        ? prev.filter(id => id !== botId)
+        : [...prev, botId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    const specialistBots = availableBots.filter(bot => bot.id !== 'moderator');
+    setSelectedBots(specialistBots.map(bot => bot.id));
+  };
+
+  const handleClearAll = () => {
+    setSelectedBots([]);
+  };
+
+  // Filter out moderator from the list
+  const specialistBots = availableBots.filter(bot => bot.id !== 'moderator');
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6">
@@ -52,27 +75,83 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
                 Ask your question
               </div>
               <div className="text-xs text-gray-600">
-                The moderator analyzes your needs
+                Select AI models to participate
               </div>
             </div>
             <div className="text-center">
               <div className="text-3xl mb-2">2️⃣</div>
               <div className="text-sm font-medium text-gray-900 mb-1">
-                Hive collaborates
+                Watch the debate
               </div>
               <div className="text-xs text-gray-600">
-                Specialist bots research and discuss
+                AI models discuss and debate in real-time
               </div>
             </div>
             <div className="text-center">
               <div className="text-3xl mb-2">3️⃣</div>
               <div className="text-sm font-medium text-gray-900 mb-1">
-                Get comprehensive answer
+                Generate conclusion
               </div>
               <div className="text-xs text-gray-600">
-                Synthesized report with insights
+                Stop anytime and get a summary
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Model Selection */}
+        <div className="card p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Select AI Models ({selectedBots.length} selected)
+            </h2>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Select All
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="text-xs text-gray-600 hover:text-gray-700 font-medium"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+          <div className="text-xs text-gray-500 mb-4">
+            {selectedBots.length === 0
+              ? 'All models will participate if none are selected'
+              : `${selectedBots.length} model${selectedBots.length !== 1 ? 's' : ''} will participate in the debate`
+            }
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {specialistBots.map((bot) => (
+              <label
+                key={bot.id}
+                className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  selectedBots.includes(bot.id)
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedBots.includes(bot.id)}
+                  onChange={() => handleBotToggle(bot.id)}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-900">{bot.name}</div>
+                  <div className="text-xs text-gray-600 mt-1">{bot.role}</div>
+                  <div className="text-xs text-gray-400 mt-1">{bot.model}</div>
+                </div>
+              </label>
+            ))}
           </div>
         </div>
 

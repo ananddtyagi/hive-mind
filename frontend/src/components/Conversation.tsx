@@ -82,6 +82,26 @@ export const Conversation: React.FC<ConversationProps> = ({
     }
   };
 
+  // Handle stopping the debate
+  const handleStopDebate = async () => {
+    try {
+      await ApiService.stopDebate(conversation.id);
+    } catch (error) {
+      console.error('Failed to stop debate:', error);
+      alert('Failed to stop debate. Please try again.');
+    }
+  };
+
+  // Handle generating conclusion
+  const handleGenerateConclusion = async () => {
+    try {
+      await ApiService.generateConclusion(conversation.id);
+    } catch (error) {
+      console.error('Failed to generate conclusion:', error);
+      alert('Failed to generate conclusion. Please try again.');
+    }
+  };
+
   // Determine if input should be disabled
   const isInputDisabled = () => {
     return conversation.status === 'researching' || conversation.status === 'synthesizing';
@@ -161,14 +181,54 @@ export const Conversation: React.FC<ConversationProps> = ({
         </div>
       </div>
 
-      {/* Input */}
+      {/* Input / Controls */}
       <div className="bg-white border-t border-gray-200 px-6 py-4">
         <div className="max-w-5xl mx-auto">
-          <ChatInput
-            onSend={handleSendMessage}
-            disabled={isInputDisabled()}
-            placeholder={getInputPlaceholder()}
-          />
+          {/* Show Stop button during active debate */}
+          {conversation.status === 'debating' && (
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={handleStopDebate}
+                className="btn bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-lg font-medium transition-colors"
+              >
+                ⏸ Stop Debate
+              </button>
+              <div className="text-sm text-gray-500">
+                Round {conversation.debateRound || 1} • {conversation.messages.filter(m => m.type === 'bot-response').length} responses
+              </div>
+            </div>
+          )}
+
+          {/* Show Conclusion button when stopped */}
+          {conversation.status === 'stopped' && (
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={handleGenerateConclusion}
+                className="btn bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg font-medium transition-colors"
+              >
+                📋 Generate Conclusion
+              </button>
+              <div className="text-sm text-gray-500">
+                Debate stopped after {conversation.messages.filter(m => m.type === 'bot-response').length} responses
+              </div>
+            </div>
+          )}
+
+          {/* Show regular input for non-debate modes */}
+          {!conversation.debateMode && (
+            <ChatInput
+              onSend={handleSendMessage}
+              disabled={isInputDisabled()}
+              placeholder={getInputPlaceholder()}
+            />
+          )}
+
+          {/* Show completion message */}
+          {conversation.status === 'completed' && (
+            <div className="text-center text-gray-500">
+              <div className="text-sm">Debate concluded</div>
+            </div>
+          )}
         </div>
       </div>
     </div>

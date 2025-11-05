@@ -17,14 +17,16 @@ export class ApiService {
    */
   static async createConversation(
     userId: string,
-    initialQuestion: string
+    initialQuestion: string,
+    selectedBots?: string[]
   ): Promise<CreateConversationResponse> {
     const response = await axios.post<CreateConversationResponse>(
       `${API_BASE}/conversations`,
       {
         userId,
         initialQuestion,
-      } as CreateConversationRequest
+        selectedBots,
+      }
     );
 
     return response.data;
@@ -84,5 +86,25 @@ export class ApiService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Stop an ongoing debate
+   */
+  static async stopDebate(conversationId: string): Promise<Conversation> {
+    const response = await axios.post<{ conversation: Conversation }>(
+      `${API_BASE}/conversations/${conversationId}/stop`
+    );
+    return response.data.conversation;
+  }
+
+  /**
+   * Generate a conclusion for a debate
+   */
+  static async generateConclusion(conversationId: string): Promise<Conversation> {
+    const response = await axios.post<{ conversation: Conversation }>(
+      `${API_BASE}/conversations/${conversationId}/conclusion`
+    );
+    return response.data.conversation;
   }
 }

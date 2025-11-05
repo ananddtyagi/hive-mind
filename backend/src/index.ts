@@ -39,15 +39,39 @@ const searchTool = new SearchTool({
 });
 
 const botRegistry = new BotRegistry(openRouterService, searchTool);
-const conversationService = new ConversationService(botRegistry);
-
-console.log('✓ Services initialized');
-console.log(`✓ Loaded ${botRegistry.getAllBots().length} specialist bots`);
 
 // ==================== WebSocket Setup ====================
 
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Map<string, Set<WebSocket>>();
+
+// Broadcast message to all clients in a conversation
+function broadcastToConversation(conversationId: string, event: WSEvent) {
+  const conversationClients = clients.get(conversationId);
+  if (conversationClients) {
+    const message = JSON.stringify(event);
+    conversationClients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+}
+
+// Create conversation service with broadcast callback
+const conversationService = new ConversationService(
+  botRegistry,
+  (conversationId, conversation) => {
+    broadcastToConversation(conversationId, {
+      type: 'conversation-updated',
+      data: conversation,
+      timestamp: Date.now(),
+    });
+  }
+);
+
+console.log('✓ Services initialized');
+console.log(`✓ Loaded ${botRegistry.getAllBots().length} specialist bots`);
 
 wss.on('connection', (ws: WebSocket, conversationId: string) => {
   console.log(`WebSocket connected for conversation: ${conversationId}`);
@@ -71,19 +95,6 @@ wss.on('connection', (ws: WebSocket, conversationId: string) => {
   });
 });
 
-// Broadcast message to all clients in a conversation
-function broadcastToConversation(conversationId: string, event: WSEvent) {
-  const conversationClients = clients.get(conversationId);
-  if (conversationClients) {
-    const message = JSON.stringify(event);
-    conversationClients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
-}
-
 // ==================== REST API Routes ====================
 
 // Health check
@@ -102,7 +113,7 @@ app.get('/api/health', (req, res) => {
 // Create a new conversation
 app.post('/api/conversations', async (req, res) => {
   try {
-    const { userId, initialQuestion }: CreateConversationRequest = req.body;
+    const { userId, initialQuestion, selectedBots } = req.body;
 
     if (!userId || !initialQuestion) {
       return res.status(400).json({
@@ -112,7 +123,9 @@ app.post('/api/conversations', async (req, res) => {
 
     const result = await conversationService.createConversation(
       userId,
-      initialQuestion
+      initialQuestion,
+      true, // debateMode = true by default
+      selectedBots
     );
 
     // Broadcast to WebSocket clients
@@ -213,6 +226,64 @@ app.get('/api/bots', (req, res) => {
   } catch (error) {
     console.error('Error fetching bots:', error);
     res.status(500).json({ error: 'Failed to fetch bots' });
+  }
+});
+
+// Stop a debate
+app.post('/api/conversations/:id/stop', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const conversation = conversationService.getConversation(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    await conversationService.stopDebate(conversationId);
+    const updatedConversation = conversationService.getConversation(conversationId);
+
+    // Broadcast to WebSocket clients
+    if (updatedConversation) {
+      broadcastToConversation(conversationId, {
+        type: 'conversation-updated',
+        data: updatedConversation,
+        timestamp: Date.now(),
+      });
+    }
+
+    res.json({ conversation: updatedConversation });
+  } catch (error) {
+    console.error('Error stopping debate:', error);
+    res.status(500).json({ error: 'Failed to stop debate' });
+  }
+});
+
+// Generate conclusion for a stopped debate
+app.post('/api/conversations/:id/conclusion', async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const conversation = conversationService.getConversation(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    await conversationService.generateConclusion(conversationId);
+    const updatedConversation = conversationService.getConversation(conversationId);
+
+    // Broadcast to WebSocket clients
+    if (updatedConversation) {
+      broadcastToConversation(conversationId, {
+        type: 'conversation-updated',
+        data: updatedConversation,
+        timestamp: Date.now(),
+      });
+    }
+
+    res.json({ conversation: updatedConversation });
+  } catch (error) {
+    console.error('Error generating conclusion:', error);
+    res.status(500).json({ error: 'Failed to generate conclusion' });
   }
 });
 
