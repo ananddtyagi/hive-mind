@@ -2,6 +2,26 @@
  * Core types for Hive-Mind collaborative AI system
  */
 
+// ==================== Model Configuration ====================
+
+export interface ModelConfig {
+  id: string;
+  name: string;
+  provider: string;
+  modelId: string; // OpenRouter model ID
+  description: string;
+  contextWindow: number;
+  pricing?: {
+    prompt: number; // per 1M tokens
+    completion: number; // per 1M tokens
+  };
+}
+
+export interface ModelSelection {
+  modelId: string;
+  count: number; // How many instances of this model
+}
+
 // ==================== Bot Configuration ====================
 
 export type ToolType = 'search' | 'code' | 'calculator' | 'web-fetch';
@@ -44,6 +64,7 @@ export interface Message {
 
   // Metadata
   botId?: string;              // ID of bot that sent/received this message
+  modelName?: string;          // Model used to generate this message
   parentMessageId?: string;    // For threading conversations
   toolsUsed?: ToolUsage[];     // Tools used to generate this message
   metadata?: Record<string, any>;
@@ -63,7 +84,9 @@ export type ConversationStatus =
   | 'researching'          // Bots working on gathering information
   | 'synthesizing'         // Moderator compiling final report
   | 'completed'            // Report delivered
-  | 'paused';              // Waiting for user input
+  | 'paused'               // Waiting for user input
+  | 'debating'             // Ongoing debate between models
+  | 'stopped';             // User stopped the debate
 
 export interface Conversation {
   id: string;
@@ -79,6 +102,11 @@ export interface Conversation {
   pendingQuestions: string[];  // Questions moderator still wants to ask user
   researchTasks: ResearchTask[];
   currentPhase: string;        // Human-readable phase description
+
+  // Debate mode tracking
+  debateMode?: boolean;        // Whether this is a debate conversation
+  debateRound?: number;        // Current round of debate
+  participatingBots?: string[]; // Bots participating in the debate
 }
 
 export interface ResearchTask {
@@ -106,6 +134,7 @@ export interface ModeratorDecision {
 export interface CreateConversationRequest {
   userId: string;
   initialQuestion: string;
+  selectedModels?: ModelSelection[]; // User's model selections
 }
 
 export interface CreateConversationResponse {

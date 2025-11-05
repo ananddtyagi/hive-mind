@@ -4,6 +4,8 @@ import type {
   CreateConversationRequest,
   CreateConversationResponse,
   BotConfig,
+  ModelConfig,
+  ModelSelection,
 } from '@shared/types';
 
 const API_BASE = '/api';
@@ -17,14 +19,16 @@ export class ApiService {
    */
   static async createConversation(
     userId: string,
-    initialQuestion: string
+    initialQuestion: string,
+    selectedModels?: ModelSelection[]
   ): Promise<CreateConversationResponse> {
     const response = await axios.post<CreateConversationResponse>(
       `${API_BASE}/conversations`,
       {
         userId,
         initialQuestion,
-      } as CreateConversationRequest
+        selectedModels,
+      }
     );
 
     return response.data;
@@ -75,6 +79,14 @@ export class ApiService {
   }
 
   /**
+   * Get available models
+   */
+  static async getModels(): Promise<ModelConfig[]> {
+    const response = await axios.get<{ models: ModelConfig[] }>(`${API_BASE}/models`);
+    return response.data.models;
+  }
+
+  /**
    * Check API health
    */
   static async healthCheck(): Promise<boolean> {
@@ -84,5 +96,25 @@ export class ApiService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Stop an ongoing debate
+   */
+  static async stopDebate(conversationId: string): Promise<Conversation> {
+    const response = await axios.post<{ conversation: Conversation }>(
+      `${API_BASE}/conversations/${conversationId}/stop`
+    );
+    return response.data.conversation;
+  }
+
+  /**
+   * Generate a conclusion for a debate
+   */
+  static async generateConclusion(conversationId: string): Promise<Conversation> {
+    const response = await axios.post<{ conversation: Conversation }>(
+      `${API_BASE}/conversations/${conversationId}/conclusion`
+    );
+    return response.data.conversation;
   }
 }

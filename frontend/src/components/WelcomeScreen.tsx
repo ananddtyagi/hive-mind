@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import type { ModelConfig, ModelSelection } from '@shared/types';
 
 interface WelcomeScreenProps {
-  onStart: (question: string) => void;
+  onStart: (question: string, selectedModels?: ModelSelection[]) => void;
+  availableModels: ModelConfig[];
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, availableModels }) => {
   const [question, setQuestion] = useState('');
+  const [modelCounts, setModelCounts] = useState<Record<string, number>>({});
 
   const exampleQuestions = [
     "Should I use WebRTC or WebSocket for real-time video chat?",
@@ -18,13 +21,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (question.trim()) {
-      onStart(question.trim());
+      const selectedModels: ModelSelection[] = Object.entries(modelCounts)
+        .filter(([_, count]) => count > 0)
+        .map(([modelId, count]) => ({ modelId, count }));
+
+      onStart(question.trim(), selectedModels.length > 0 ? selectedModels : undefined);
     }
   };
 
   const handleExampleClick = (example: string) => {
     setQuestion(example);
   };
+
+  const handleModelCountChange = (modelId: string, delta: number) => {
+    setModelCounts(prev => {
+      const newCount = (prev[modelId] || 0) + delta;
+      if (newCount <= 0) {
+        const { [modelId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [modelId]: newCount };
+    });
+  };
+
+  const handleClearAll = () => {
+    setModelCounts({});
+  };
+
+  const totalModels = Object.values(modelCounts).reduce((sum, count) => sum + count, 0);
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6">
@@ -52,27 +76,101 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
                 Ask your question
               </div>
               <div className="text-xs text-gray-600">
-                The moderator analyzes your needs
+                Select AI models to participate
               </div>
             </div>
             <div className="text-center">
               <div className="text-3xl mb-2">2️⃣</div>
               <div className="text-sm font-medium text-gray-900 mb-1">
-                Hive collaborates
+                Watch the debate
               </div>
               <div className="text-xs text-gray-600">
-                Specialist bots research and discuss
+                AI models discuss and debate in real-time
               </div>
             </div>
             <div className="text-center">
               <div className="text-3xl mb-2">3️⃣</div>
               <div className="text-sm font-medium text-gray-900 mb-1">
-                Get comprehensive answer
+                Generate conclusion
               </div>
               <div className="text-xs text-gray-600">
-                Synthesized report with insights
+                Stop anytime and get a summary
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Model Selection */}
+        <div className="card p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Select AI Models ({totalModels} {totalModels === 1 ? 'instance' : 'instances'})
+            </h2>
+            {totalModels > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="text-xs text-gray-600 hover:text-gray-700 font-medium"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mb-4">
+            {totalModels === 0
+              ? 'Choose models and how many of each to deploy'
+              : `${totalModels} model ${totalModels === 1 ? 'instance' : 'instances'} will participate in the debate`
+            }
+          </div>
+          <div className="space-y-3">
+            {availableModels.map((model) => {
+              const count = modelCounts[model.id] || 0;
+              return (
+                <div
+                  key={model.id}
+                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-all ${
+                    count > 0
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-sm text-gray-900">{model.name}</div>
+                      <div className="text-xs text-gray-500 px-2 py-0.5 bg-gray-100 rounded">
+                        {model.provider}
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">{model.description}</div>
+                    {model.pricing && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        ${model.pricing.prompt}/${ model.pricing.completion} per 1M tokens (in/out)
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleModelCountChange(model.id, -1)}
+                      disabled={count === 0}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 font-bold"
+                    >
+                      −
+                    </button>
+                    <div className="w-8 text-center font-medium text-gray-900">
+                      {count}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleModelCountChange(model.id, 1)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

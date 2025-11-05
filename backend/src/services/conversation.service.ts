@@ -5,9 +5,12 @@ import type {
   MessageRole,
   MessageType,
   ConversationStatus,
+  ModelSelection,
+  BotConfig,
 } from '../../../shared/types';
 import { BotRegistry } from './bot-registry.service';
 import { SpecialistBot } from '../bots/specialist.bot';
+import { getModelById } from '../config/models.config';
 
 /**
  * Manages conversations and orchestrates bot interactions
@@ -15,9 +18,11 @@ import { SpecialistBot } from '../bots/specialist.bot';
 export class ConversationService {
   private conversations: Map<string, Conversation> = new Map();
   private botRegistry: BotRegistry;
+  private broadcastCallback?: (conversationId: string, conversation: Conversation) => void;
 
-  constructor(botRegistry: BotRegistry) {
+  constructor(botRegistry: BotRegistry, broadcastCallback?: (conversationId: string, conversation: Conversation) => void) {
     this.botRegistry = botRegistry;
+    this.broadcastCallback = broadcastCallback;
   }
 
   /**
@@ -25,21 +30,76 @@ export class ConversationService {
    */
   async createConversation(
     userId: string,
-    initialQuestion: string
+    initialQuestion: string,
+    debateMode: boolean = true,
+    selectedModels?: ModelSelection[]
   ): Promise<{ conversation: Conversation; initialMessage: Message }> {
     const conversationId = randomUUID();
+
+    // Create dynamic bots from model selections
+    let participatingBots: string[] = [];
+
+    if (selectedModels && selectedModels.length > 0) {
+      // Create instances for each selected model
+      for (const selection of selectedModels) {
+        const modelConfig = getModelById(selection.modelId);
+        if (!modelConfig) {
+          console.warn(`Model ${selection.modelId} not found, skipping`);
+          continue;
+        }
+
+        // Create the specified number of instances
+        for (let i = 0; i < selection.count; i++) {
+          const botId = `${selection.modelId}-${randomUUID().substring(0, 8)}`;
+          const instanceNum = i + 1;
+
+          const botConfig: BotConfig = {
+            id: botId,
+            name: `${modelConfig.name}${selection.count > 1 ? ` #${instanceNum}` : ''}`,
+            role: `Debate participant using ${modelConfig.name}`,
+            model: modelConfig.modelId, // OpenRouter model ID
+            tools: ['search'],
+            systemPrompt: `You are participating in a collaborative debate about: "${initialQuestion}"
+
+Your role:
+- Provide thoughtful, well-reasoned perspectives
+- Engage constructively with other participants
+- Challenge assumptions when appropriate
+- Build on others' ideas
+- Aim for comprehensive, nuanced answers
+
+Be concise but thorough. Each response should add value to the discussion.`,
+            temperature: 0.7,
+            maxTokens: 2000,
+            enabled: true,
+          };
+
+          // Register this bot instance dynamically
+          this.botRegistry.addBot(botConfig);
+          participatingBots.push(botId);
+        }
+      }
+    } else {
+      // Use default pre-configured bots
+      participatingBots = this.botRegistry.getAllBots()
+        .filter(bot => bot.getConfig().id !== 'moderator')
+        .map(bot => bot.getConfig().id);
+    }
 
     const conversation: Conversation = {
       id: conversationId,
       userId,
-      status: 'gathering-context',
+      status: debateMode ? 'debating' : 'gathering-context',
       title: initialQuestion,
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
       pendingQuestions: [],
       researchTasks: [],
-      currentPhase: 'Analyzing your question',
+      currentPhase: debateMode ? 'Starting debate' : 'Analyzing your question',
+      debateMode,
+      debateRound: debateMode ? 1 : undefined,
+      participatingBots: debateMode ? participatingBots : undefined,
     };
 
     // Add initial user message
@@ -53,8 +113,12 @@ export class ConversationService {
     conversation.messages.push(userMessage);
     this.conversations.set(conversationId, conversation);
 
-    // Start the conversation flow
-    await this.processUserMessage(conversationId, initialQuestion);
+    // Start the appropriate flow
+    if (debateMode) {
+      await this.startDebate(conversationId);
+    } else {
+      await this.processUserMessage(conversationId, initialQuestion);
+    }
 
     return {
       conversation: this.conversations.get(conversationId)!,
@@ -143,11 +207,13 @@ export class ConversationService {
     if (!conversation) return;
 
     // Add moderator thinking message
+    const moderatorModel = this.botRegistry.getModerator().getConfig().model;
     const thinkingMessage = this.createMessage(
       conversationId,
       'moderator',
       'moderator-thinking',
-      decision.reasoning
+      decision.reasoning,
+      { modelName: moderatorModel }
     );
     conversation.messages.push(thinkingMessage);
 
@@ -224,7 +290,7 @@ export class ConversationService {
       'moderator',
       'bot-query',
       query,
-      { botId }
+      { botId, modelName: this.botRegistry.getModerator().getConfig().model }
     );
     conversation.messages.push(queryMessage);
 
@@ -238,7 +304,7 @@ export class ConversationService {
         'bot',
         'bot-response',
         response,
-        { botId }
+        { botId, modelName: botConfig.model }
       );
       conversation.messages.push(responseMessage);
 
@@ -282,7 +348,8 @@ export class ConversationService {
       conversationId,
       'moderator',
       'final-report',
-      report
+      report,
+      { modelName: moderator.getConfig().model }
     );
 
     conversation.messages.push(reportMessage);
@@ -335,5 +402,198 @@ export class ConversationService {
       }
     }
     return undefined;
+  }
+
+  // ==================== Debate Mode Methods ====================
+
+  /**
+   * Start a debate between multiple AI models
+   */
+  private async startDebate(conversationId: string): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation || !conversation.participatingBots) return;
+
+    // Start with the first bot
+    await this.getNextDebateResponse(conversationId);
+  }
+
+  /**
+   * Get the next response in the debate
+   */
+  private async getNextDebateResponse(conversationId: string): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation || !conversation.participatingBots) return;
+
+    // Check if debate is stopped
+    if (conversation.status === 'stopped') return;
+
+    // Get the next bot to respond
+    const botIndex = (conversation.messages.filter(m => m.type === 'bot-response').length) % conversation.participatingBots.length;
+    const botId = conversation.participatingBots[botIndex];
+
+    const bot = this.botRegistry.getBot(botId);
+    if (!bot) {
+      console.error(`Bot not found: ${botId}`);
+      return;
+    }
+
+    const botConfig = bot.getConfig();
+    conversation.activeBot = botId;
+    conversation.currentPhase = `${botConfig.name} is responding`;
+
+    // Build context from previous messages
+    const context = this.buildDebateContext(conversation);
+
+    try {
+      const specialist = bot as SpecialistBot;
+
+      // Create a debate prompt
+      const debatePrompt = `You are participating in a collaborative debate with other AI models about the following topic:
+
+"${conversation.title}"
+
+Previous discussion:
+${context}
+
+Provide your perspective, insights, or counterpoints. Build upon or respectfully challenge the previous points. Be thoughtful and substantive.`;
+
+      const response = await specialist.answerQuery(debatePrompt);
+
+      // Add the response
+      const responseMessage = this.createMessage(
+        conversationId,
+        'bot',
+        'bot-response',
+        response,
+        { botId, modelName: botConfig.model }
+      );
+      conversation.messages.push(responseMessage);
+      conversation.updatedAt = Date.now();
+
+      // Update round number
+      const totalResponses = conversation.messages.filter(m => m.type === 'bot-response').length;
+      conversation.debateRound = Math.ceil(totalResponses / conversation.participatingBots.length);
+
+      // Broadcast the update
+      if (this.broadcastCallback) {
+        this.broadcastCallback(conversationId, conversation);
+      }
+
+      // Continue the debate if not stopped
+      if (conversation.status === 'debating') {
+        // Add a small delay before the next response to prevent rate limiting
+        setTimeout(() => {
+          this.getNextDebateResponse(conversationId);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error(`Error getting debate response from ${botId}:`, error);
+
+      const errorMessage = this.createMessage(
+        conversationId,
+        'system',
+        'system-message',
+        `Error getting response from ${botConfig.name}. Continuing with other participants.`
+      );
+      conversation.messages.push(errorMessage);
+
+      // Continue with next bot
+      if (conversation.status === 'debating') {
+        setTimeout(() => {
+          this.getNextDebateResponse(conversationId);
+        }, 1000);
+      }
+    }
+  }
+
+  /**
+   * Build context from debate history
+   */
+  private buildDebateContext(conversation: Conversation): string {
+    const recentMessages = conversation.messages
+      .filter(m => m.type === 'bot-response')
+      .slice(-6); // Last 6 messages for context
+
+    if (recentMessages.length === 0) {
+      return 'No previous discussion yet. You are the first to respond.';
+    }
+
+    let context = '';
+    recentMessages.forEach((m, idx) => {
+      const botName = m.botId ? this.botRegistry.getBot(m.botId)?.getConfig().name : 'Unknown';
+      const modelName = m.modelName || 'Unknown Model';
+      context += `\n[${botName} (${modelName})]: ${m.content}\n`;
+    });
+
+    return context;
+  }
+
+  /**
+   * Stop the ongoing debate
+   */
+  async stopDebate(conversationId: string): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) return;
+
+    conversation.status = 'stopped';
+    conversation.currentPhase = 'Debate stopped';
+    conversation.activeBot = undefined;
+    conversation.updatedAt = Date.now();
+
+    const stopMessage = this.createMessage(
+      conversationId,
+      'system',
+      'system-message',
+      'Debate has been stopped by the user.'
+    );
+    conversation.messages.push(stopMessage);
+  }
+
+  /**
+   * Generate a conclusion/summary of the debate
+   */
+  async generateConclusion(conversationId: string): Promise<string> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) throw new Error('Conversation not found');
+
+    conversation.status = 'synthesizing';
+    conversation.currentPhase = 'Generating conclusion';
+
+    const moderator = this.botRegistry.getModerator();
+
+    // Build the full debate context
+    const debateHistory = this.buildDebateContext(conversation);
+
+    const conclusionPrompt = `Analyze and summarize the following AI debate:
+
+Topic: "${conversation.title}"
+
+Debate discussion:
+${debateHistory}
+
+Provide a comprehensive conclusion that:
+1. Summarizes the key points and perspectives presented
+2. Identifies areas of agreement and disagreement
+3. Highlights the most valuable insights
+4. Provides a balanced synthesis of the discussion
+
+Your conclusion:`;
+
+    const conclusion = await moderator.synthesizeReport(conversation);
+
+    const conclusionMessage = this.createMessage(
+      conversationId,
+      'moderator',
+      'final-report',
+      conclusion,
+      { modelName: moderator.getConfig().model }
+    );
+
+    conversation.messages.push(conclusionMessage);
+    conversation.status = 'completed';
+    conversation.currentPhase = 'Concluded';
+    conversation.updatedAt = Date.now();
+
+    return conclusion;
   }
 }
