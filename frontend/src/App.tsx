@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Conversation } from './components/Conversation';
 import { ApiService } from './services/api.service';
-import type { Conversation as ConversationType, BotConfig } from '@shared/types';
+import type { Conversation as ConversationType, BotConfig, ModelConfig, ModelSelection } from '@shared/types';
 
 // Generate a simple user ID (in production, use proper auth)
 const USER_ID = 'user-' + Math.random().toString(36).substring(7);
@@ -10,12 +10,23 @@ const USER_ID = 'user-' + Math.random().toString(36).substring(7);
 function App() {
   const [conversation, setConversation] = useState<ConversationType | null>(null);
   const [bots, setBots] = useState<BotConfig[]>([]);
+  const [models, setModels] = useState<ModelConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Load available bots on mount
+  // Load available models on mount
   useEffect(() => {
-    loadBots();
+    loadModels();
+    loadBots(); // Still load bots for display in conversation
   }, []);
+
+  const loadModels = async () => {
+    try {
+      const availableModels = await ApiService.getModels();
+      setModels(availableModels);
+    } catch (err) {
+      console.error('Failed to load models:', err);
+    }
+  };
 
   const loadBots = async () => {
     try {
@@ -26,7 +37,7 @@ function App() {
     }
   };
 
-  const handleStartConversation = async (question: string, selectedBots?: string[]) => {
+  const handleStartConversation = async (question: string, selectedModels?: ModelSelection[]) => {
     setError(null);
 
     // Create a temporary conversation to show immediately
@@ -50,14 +61,14 @@ function App() {
       currentPhase: 'Starting debate...',
       debateMode: true,
       debateRound: 1,
-      participatingBots: selectedBots,
+      participatingBots: undefined, // Will be set by backend based on model selection
     };
 
     // Show the conversation immediately
     setConversation(tempConversation);
 
     try {
-      const result = await ApiService.createConversation(USER_ID, question, selectedBots);
+      const result = await ApiService.createConversation(USER_ID, question, selectedModels);
       setConversation(result.conversation);
     } catch (err) {
       console.error('Failed to create conversation:', err);
@@ -118,7 +129,7 @@ function App() {
     );
   }
 
-  return <WelcomeScreen onStart={handleStartConversation} availableBots={bots} />;
+  return <WelcomeScreen onStart={handleStartConversation} availableModels={models} />;
 }
 
 export default App;

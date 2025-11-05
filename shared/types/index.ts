@@ -2,6 +2,26 @@
  * Core types for Hive-Mind collaborative AI system
  */
 
+// ==================== Model Configuration ====================
+
+export interface ModelConfig {
+  id: string;
+  name: string;
+  provider: string;
+  modelId: string; // OpenRouter model ID
+  description: string;
+  contextWindow: number;
+  pricing?: {
+    prompt: number; // per 1M tokens
+    completion: number; // per 1M tokens
+  };
+}
+
+export interface ModelSelection {
+  modelId: string;
+  count: number; // How many instances of this model
+}
+
 // ==================== Bot Configuration ====================
 
 export type ToolType = 'search' | 'code' | 'calculator' | 'web-fetch';
@@ -114,6 +134,7 @@ export interface ModeratorDecision {
 export interface CreateConversationRequest {
   userId: string;
   initialQuestion: string;
+  selectedModels?: ModelSelection[]; // User's model selections
 }
 
 export interface CreateConversationResponse {

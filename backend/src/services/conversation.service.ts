@@ -5,9 +5,12 @@ import type {
   MessageRole,
   MessageType,
   ConversationStatus,
+  ModelSelection,
+  BotConfig,
 } from '../../../shared/types';
 import { BotRegistry } from './bot-registry.service';
 import { SpecialistBot } from '../bots/specialist.bot';
+import { getModelById } from '../config/models.config';
 
 /**
  * Manages conversations and orchestrates bot interactions
@@ -29,14 +32,59 @@ export class ConversationService {
     userId: string,
     initialQuestion: string,
     debateMode: boolean = true,
-    selectedBots?: string[]
+    selectedModels?: ModelSelection[]
   ): Promise<{ conversation: Conversation; initialMessage: Message }> {
     const conversationId = randomUUID();
 
-    // Get participating bots
-    const participatingBots = selectedBots || this.botRegistry.getAllBots()
-      .filter(bot => bot.getConfig().id !== 'moderator')
-      .map(bot => bot.getConfig().id);
+    // Create dynamic bots from model selections
+    let participatingBots: string[] = [];
+
+    if (selectedModels && selectedModels.length > 0) {
+      // Create instances for each selected model
+      for (const selection of selectedModels) {
+        const modelConfig = getModelById(selection.modelId);
+        if (!modelConfig) {
+          console.warn(`Model ${selection.modelId} not found, skipping`);
+          continue;
+        }
+
+        // Create the specified number of instances
+        for (let i = 0; i < selection.count; i++) {
+          const botId = `${selection.modelId}-${randomUUID().substring(0, 8)}`;
+          const instanceNum = i + 1;
+
+          const botConfig: BotConfig = {
+            id: botId,
+            name: `${modelConfig.name}${selection.count > 1 ? ` #${instanceNum}` : ''}`,
+            role: `Debate participant using ${modelConfig.name}`,
+            model: modelConfig.modelId, // OpenRouter model ID
+            tools: ['search'],
+            systemPrompt: `You are participating in a collaborative debate about: "${initialQuestion}"
+
+Your role:
+- Provide thoughtful, well-reasoned perspectives
+- Engage constructively with other participants
+- Challenge assumptions when appropriate
+- Build on others' ideas
+- Aim for comprehensive, nuanced answers
+
+Be concise but thorough. Each response should add value to the discussion.`,
+            temperature: 0.7,
+            maxTokens: 2000,
+            enabled: true,
+          };
+
+          // Register this bot instance dynamically
+          this.botRegistry.addBot(botConfig);
+          participatingBots.push(botId);
+        }
+      }
+    } else {
+      // Use default pre-configured bots
+      participatingBots = this.botRegistry.getAllBots()
+        .filter(bot => bot.getConfig().id !== 'moderator')
+        .map(bot => bot.getConfig().id);
+    }
 
     const conversation: Conversation = {
       id: conversationId,

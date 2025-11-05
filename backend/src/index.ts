@@ -6,6 +6,7 @@ import { OpenRouterService } from './services/openrouter.service';
 import { SearchTool } from './tools/search.tool';
 import { BotRegistry } from './services/bot-registry.service';
 import { ConversationService } from './services/conversation.service';
+import { AVAILABLE_MODELS } from './config/models.config';
 import type {
   CreateConversationRequest,
   SendMessageRequest,
@@ -113,7 +114,7 @@ app.get('/api/health', (req, res) => {
 // Create a new conversation
 app.post('/api/conversations', async (req, res) => {
   try {
-    const { userId, initialQuestion, selectedBots } = req.body;
+    const { userId, initialQuestion, selectedModels } = req.body;
 
     if (!userId || !initialQuestion) {
       return res.status(400).json({
@@ -125,7 +126,7 @@ app.post('/api/conversations', async (req, res) => {
       userId,
       initialQuestion,
       true, // debateMode = true by default
-      selectedBots
+      selectedModels
     );
 
     // Broadcast to WebSocket clients
@@ -226,6 +227,16 @@ app.get('/api/bots', (req, res) => {
   } catch (error) {
     console.error('Error fetching bots:', error);
     res.status(500).json({ error: 'Failed to fetch bots' });
+  }
+});
+
+// Get available models
+app.get('/api/models', (req, res) => {
+  try {
+    res.json({ models: AVAILABLE_MODELS });
+  } catch (error) {
+    console.error('Error fetching models:', error);
+    res.status(500).json({ error: 'Failed to fetch models' });
   }
 });
 

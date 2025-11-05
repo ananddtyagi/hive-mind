@@ -4,6 +4,8 @@ import type {
   CreateConversationRequest,
   CreateConversationResponse,
   BotConfig,
+  ModelConfig,
+  ModelSelection,
 } from '@shared/types';
 
 const API_BASE = '/api';
@@ -18,14 +20,14 @@ export class ApiService {
   static async createConversation(
     userId: string,
     initialQuestion: string,
-    selectedBots?: string[]
+    selectedModels?: ModelSelection[]
   ): Promise<CreateConversationResponse> {
     const response = await axios.post<CreateConversationResponse>(
       `${API_BASE}/conversations`,
       {
         userId,
         initialQuestion,
-        selectedBots,
+        selectedModels,
       }
     );
 
@@ -74,6 +76,14 @@ export class ApiService {
   static async getBots(): Promise<BotConfig[]> {
     const response = await axios.get<{ bots: BotConfig[] }>(`${API_BASE}/bots`);
     return response.data.bots;
+  }
+
+  /**
+   * Get available models
+   */
+  static async getModels(): Promise<ModelConfig[]> {
+    const response = await axios.get<{ models: ModelConfig[] }>(`${API_BASE}/models`);
+    return response.data.models;
   }
 
   /**
